@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Profile - SocialHub</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- Navigation Bar -->
+  <nav class="navbar">
+    <div class="navbar-container">
+      <a href="index.html" class="logo">🌐 SocialHub</a>
+      
+      <div class="nav-center">
+        <input type="text" class="search-box" placeholder="Search users...">
+      </div>
+
+      <div class="nav-right">
+        <button class="nav-icon" title="Home" onclick="window.location.href='index.html'">🏠</button>
+        <button class="nav-icon" title="Notifications">🔔</button>
+        <button class="nav-icon" title="Messages">💬</button>
+        <button class="nav-icon" onclick="Utils.toggleDarkMode()" title="Dark Mode">🌙</button>
+        
+        <div id="auth-div" style="display: flex; gap: 0.5rem;">
+          <a href="login.html" class="btn btn-secondary">Login</a>
+          <a href="register.html" class="btn btn-primary">Sign Up</a>
+        </div>
+
+        <div id="user-div" style="display: none; align-items: center; gap: 1rem;">
+          <img id="user-avatar-nav" class="user-avatar-nav" alt="User">
+          <button class="nav-icon" onclick="Auth.logout()" title="Logout">🚪</button>
+        </div>
+
+        <button class="menu-toggle" onclick="document.querySelector('.sidebar').classList.toggle('active')">☰</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Container -->
+  <div class="main-container">
+    <!-- Left Sidebar -->
+    <aside class="sidebar">
+      <nav class="sidebar-nav">
+        <li><a href="index.html">🏠 Home</a></li>
+        <li><a href="explore.html">🔍 Explore</a></li>
+        <li><a href="messages.html">💬 Messages</a></li>
+        <li><a href="bookmarks.html">🔖 Bookmarks</a></li>
+        <li><a href="#" onclick="goToProfile()" class="active">👤 Profile</a></li>
+      </nav>
+    </aside>
+
+    <!-- Feed -->
+    <main class="feed">
+      <!-- Profile Header -->
+      <div class="profile-header" id="profile-header">
+        <div class="spinner" style="margin-top: 2rem;"></div>
+      </div>
+
+      <!-- User Posts -->
+      <div id="user-posts-container">
+        <div class="spinner"></div>
+      </div>
+    </main>
+
+    <!-- Right Sidebar -->
+    <aside class="right-sidebar">
+      <div class="card" id="profile-card">
+        <div class="spinner"></div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Edit Profile Modal -->
+  <div id="edit-profile-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Edit Profile</h2>
+        <button class="modal-close" onclick="Utils.closeModal('edit-profile-modal')">✕</button>
+      </div>
+
+      <form id="edit-profile-form">
+        <div class="form-group">
+          <label for="edit-name">Name</label>
+          <input type="text" id="edit-name" required>
+        </div>
+
+        <div class="form-group">
+          <label for="edit-bio">Bio</label>
+          <textarea id="edit-bio" style="min-height: 80px;"></textarea>
+        </div>
+
+        <div class="form-group">
+          <button type="submit" class="btn btn-primary" style="width: 100%;">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="js/database.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/auth.js"></script>
+
+  <script>
+    let profileUserId;
+    let currentUser;
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      Auth.requireLogin();
+      currentUser = Auth.getCurrentUser();
+      
+      const params = new URLSearchParams(window.location.search);
+      profileUserId = parseInt(params.get('user')) || currentUser.id;
+
+      await loadProfile();
+      await loadUserPosts();
+    });
+
+    // Load user profile
+    async function loadProfile() {
+      try {
+        const user = await SocialAPI.getUser(profileUserId);
+        const followers = await SocialAPI.getFollowers(profileUserId);
+        const following = await SocialAPI.getFollowing(profileUserId);
+        const isFollowing = await SocialAPI.isFollowing(currentUser.id, profileUserId);
+
+        const headerHTML = `
+          <img src="${user.cover}" style="width: 100%; height: 300px; object-fit: cover;">
+          
+          <div class="profile-info">
+            <img src="${user.avatar}" class="profile-avatar" alt="${user.name}">
+            <div>
+              <button class="btn ${isFollowing ? 'btn-secondary' : 'btn-primary'}" 
+                onclick="toggleFollow(${user.id})" 
+                ${user.id === currentUser.id ? 'style="display:none;"' : ''}>
+                ${isFollowing ? 'Unfollow' : 'Follow'}
+              </button>
+              ${user.id === currentUser.id ? `<button class="btn btn-secondary" onclick="Utils.openModal('edit-profile-modal')">Edit</button>` : ''}
+            </div>
+          </div>
+
+          <div style="padding: 0 1.5rem; border-bottom: 1px solid var(--border); padding-bottom: 1.5rem;">
+            <h2 class="profile-name">${user.name} ${user.isVerified ? '✓' : ''}</h2>
+            <p class="profile-handle">@${user.username}</p>
+            <p class="profile-bio">${user.bio}</p>
+            <div class="profile-meta">
+              <span class="profile-meta-item">📅 Joined ${user.joinDate}</span>
+            </div>
+          </div>
+
+          <div class="profile-stats">
+            <div class="profile-stat">
+              <div class="profile-stat-value">${Utils.formatCount(user.posts)}</div>
+              <div class="profile-stat-label">Posts</div>
+            </div>
+            <div class="profile-stat">
+              <div class="profile-stat-value">${Utils.formatCount(user.following)}</div>
+              <div class="profile-stat-label">Following</div>
+            </div>
+            <div class="profile-stat">
+              <div class="profile-stat-value">${Utils.formatCount(user.followers)}</div>
+              <div class="profile-stat-label">Followers</div>
+            </div>
+          </div>
+        `;
+
+        document.getElementById('profile-header').innerHTML = headerHTML;
+
+        // Update profile card
+        const cardHTML = `
+          <h3>Profile</h3>
+          <div style="padding: 1rem 0;">
+            <p><strong>${user.name}</strong></p>
+            <p style="color: var(--text-secondary);">@${user.username}</p>
+            <p style="margin: 0.5rem 0;">${user.bio}</p>
+            <div style="margin-top: 1rem;">
+              <div style="margin-bottom: 0.5rem;"><strong>${Utils.formatCount(followers.length)}</strong> Followers</div>
+              <div><strong>${Utils.formatCount(following.length)}</strong> Following</div>
+            </div>
+          </div>
+        `;
+
+        document.getElementById('profile-card').innerHTML = cardHTML;
+
+        // Setup edit form
+        if (profileUserId === currentUser.id) {
+          document.getElementById('edit-name').value = user.name;
+          document.getElementById('edit-bio').value = user.bio;
+
+          document.getElementById('edit-profile-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            try {
+              await SocialAPI.updateProfile(user.id, {
+                name: document.getElementById('edit-name').value,
+                bio: document.getElementById('edit-bio').value
+              });
+              Utils.showNotification('Profile updated!', 'success');
+              Utils.closeModal('edit-profile-modal');
+              location.reload();
+            } catch (error) {
+              Utils.showNotification(error.message, 'error');
+            }
+          });
+        }
+      } catch (error) {
+        document.getElementById('profile-header').innerHTML = '<p class="text-center text-muted" style="padding: 2rem;">User not found</p>';
+      }
+    }
+
+    // Load user posts
+    async function loadUserPosts() {
+      const container = document.getElementById('user-posts-container');
+      container.innerHTML = '<div class="spinner"></div>';
+      
+      try {
+        const posts = await SocialAPI.getUserPosts(profileUserId);
+        if (posts.length === 0) {
+          container.innerHTML = '<p class="text-center text-muted" style="padding: 2rem;">No posts yet</p>';
+          return;
+        }
+
+        container.innerHTML = posts.map(post => renderPost(post)).join('');
+      } catch (error) {
+        container.innerHTML = '<p class="text-center text-muted" style="padding: 2rem;">Error loading posts</p>';
+      }
+    }
+
+    // Render post
+    function renderPost(post) {
+      const user = getDatabase().users.find(u => u.id === post.userId);
+      return `
+        <div class="post" onclick="window.location.href='post.html?id=${post.id}'">
+          <div class="post-header">
+            <div class="post-user">
+              <img src="${user.avatar}" class="post-avatar" alt="${user.name}">
+              <div class="post-user-info">
+                <a href="profile.html?user=${user.id}" class="post-user-name">${user.name}</a>
+                <span class="post-user-handle">@${user.username}</span>
+              </div>
+            </div>
+            <div style="color: var(--text-secondary); font-size: 0.9rem;">${Utils.formatTime(post.timestamp)}</div>
+          </div>
+          <div class="post-content">${Utils.escapeHtml(post.content)}</div>
+          ${post.image ? `<img src="${post.image}" class="post-image">` : ''}
+        </div>
+      `;
+    }
+
+    // Toggle follow
+    async function toggleFollow(userId) {
+      try {
+        const isFollowing = await SocialAPI.isFollowing(currentUser.id, userId);
+        if (isFollowing) {
+          await SocialAPI.unfollowUser(currentUser.id, userId);
+          Utils.showNotification('User unfollowed', 'success');
+        } else {
+          await SocialAPI.followUser(currentUser.id, userId);
+          Utils.showNotification('User followed!', 'success');
+        }
+        await loadProfile();
+      } catch (error) {
+        Utils.showNotification(error.message, 'error');
+      }
+    }
+
+    // Go to current user profile
+    function goToProfile() {
+      window.location.href = `profile.html?user=${currentUser.id}`;
+    }
+  </script>
+</body>
+</html>

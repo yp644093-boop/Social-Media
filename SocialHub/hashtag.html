@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hashtag - SocialHub</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="navbar-container">
+      <a href="index.html" class="logo">🌐 SocialHub</a>
+      <div class="nav-center">
+        <input type="text" class="search-box" placeholder="Search users...">
+      </div>
+      <div class="nav-right">
+        <button class="nav-icon" onclick="window.location.href='index.html'">🏠</button>
+        <button class="nav-icon">🔔</button>
+        <button class="nav-icon">💬</button>
+        <button class="nav-icon" onclick="Utils.toggleDarkMode()">🌙</button>
+        <div id="auth-div" style="display: flex; gap: 0.5rem;">
+          <a href="login.html" class="btn btn-secondary">Login</a>
+        </div>
+        <div id="user-div" style="display: none; align-items: center; gap: 1rem;">
+          <img id="user-avatar-nav" class="user-avatar-nav" alt="User">
+          <button class="nav-icon" onclick="Auth.logout()">🚪</button>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="main-container">
+    <aside class="sidebar">
+      <nav class="sidebar-nav">
+        <li><a href="index.html">🏠 Home</a></li>
+        <li><a href="explore.html">🔍 Explore</a></li>
+        <li><a href="messages.html">💬 Messages</a></li>
+        <li><a href="bookmarks.html">🔖 Bookmarks</a></li>
+      </nav>
+    </aside>
+
+    <main class="feed">
+      <div class="feed-header">
+        <h2 id="hashtag-title"># Loading...</h2>
+        <p id="hashtag-stats" style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 0.5rem;">
+          <span id="post-count">0</span> posts
+        </p>
+      </div>
+
+      <div id="hashtag-posts">
+        <div class="spinner"></div>
+      </div>
+    </main>
+
+    <aside class="right-sidebar">
+      <div class="card">
+        <h3>Related Hashtags</h3>
+        <div id="related-hashtags">
+          <div class="spinner"></div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <script src="js/database.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/auth.js"></script>
+
+  <script>
+    let currentTag;
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      Auth.requireLogin();
+      const params = new URLSearchParams(window.location.search);
+      currentTag = params.get('tag');
+
+      if (!currentTag) {
+        document.getElementById('hashtag-posts').innerHTML = '<p class="text-center text-muted" style="padding: 2rem;">No hashtag specified</p>';
+        return;
+      }
+
+      document.getElementById('hashtag-title').textContent = `#${currentTag}`;
+      await loadHashtagPosts();
+      await loadRelatedHashtags();
+    });
+
+    async function loadHashtagPosts() {
+      const container = document.getElementById('hashtag-posts');
+      try {
+        const posts = await SocialAPI.getPostsByHashtag(currentTag);
+        
+        document.getElementById('post-count').textContent = posts.length;
+
+        if (posts.length === 0) {
+          container.innerHTML = '<p class="text-center text-muted" style="padding: 2rem;">No posts with this hashtag yet</p>';
+          return;
+        }
+
+        container.innerHTML = posts.map(post => {
+          const user = getDatabase().users.find(u => u.id === post.userId);
+          
+          // Create clickable hashtags
+          let contentWithHashtags = Utils.escapeHtml(post.content);
+          if (post.hashtags && post.hashtags.length > 0) {
+            post.hashtags.forEach(tag => {
+              const hashtagRegex = new RegExp(`#${tag}\\b`, 'gi');
+              contentWithHashtags = contentWithHashtags.replace(hashtagRegex, `<a href="hashtag.html?tag=${tag}" class="hashtag">#${tag}</a>`);
+            });
+          }
+
+          return `
+            <div class="post" onclick="window.location.href='post.html?id=${post.id}'">
+              <div class="post-header">
+                <div class="post-user">
+                  <img src="${user.avatar}" class="post-avatar" alt="${user.name}">
+                  <div class="post-user-info">
+                    <a href="profile.html?user=${user.id}" class="post-user-name">${user.name}</a>
+                    <span class="post-user-handle">@${user.username}</span>
+                  </div>
+                </div>
+                <div style="color: var(--text-secondary); font-size: 0.9rem;">${Utils.formatTime(post.timestamp)}</div>
+              </div>
+              <div class="post-content">${contentWithHashtags}</div>
+              ${post.image ? `<img src="${post.image}" class="post-image">` : ''}
+              <div class="post-stats">
+                <div class="post-stat"><span>${Utils.formatCount(post.likes)}</span> Likes</div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      } catch (error) {
+        container.innerHTML = '<p class="text-center text-muted" style="padding: 2rem;">Error loading posts</p>';
+      }
+    }
+
+    async function loadRelatedHashtags() {
+      const container = document.getElementById('related-hashtags');
+      try {
+        const allTrending = await SocialAPI.getTrendingHashtags(10);
+        const related = allTrending.filter(h => h.tag !== currentTag).slice(0, 5);
+
+        if (related.length === 0) {
+          container.innerHTML = '<p class="text-center text-muted">No related hashtags</p>';
+          return;
+        }
+
+        container.innerHTML = related.map(trend => `
+          <div class="trends-item" onclick="window.location.href='hashtag.html?tag=${trend.tag}'">
+            <div class="trend-title">#${trend.tag}</div>
+            <div class="trend-count">${Utils.formatCount(trend.posts)} posts</div>
+          </div>
+        `).join('');
+      } catch (error) {
+        container.innerHTML = '<p class="text-center text-muted">Error loading hashtags</p>';
+      }
+    }
+  </script>
+</body>
+</html>

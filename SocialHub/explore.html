@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Explore - SocialHub</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="navbar-container">
+      <a href="index.html" class="logo">🌐 SocialHub</a>
+      <div class="nav-center">
+        <input type="text" class="search-box" placeholder="Search users...">
+      </div>
+      <div class="nav-right">
+        <button class="nav-icon" onclick="window.location.href='index.html'">🏠</button>
+        <button class="nav-icon">🔔</button>
+        <button class="nav-icon">💬</button>
+        <button class="nav-icon" onclick="Utils.toggleDarkMode()">🌙</button>
+        <div id="auth-div" style="display: flex; gap: 0.5rem;">
+          <a href="login.html" class="btn btn-secondary">Login</a>
+        </div>
+        <div id="user-div" style="display: none; align-items: center; gap: 1rem;">
+          <img id="user-avatar-nav" class="user-avatar-nav" alt="User">
+          <button class="nav-icon" onclick="Auth.logout()">🚪</button>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="main-container">
+    <aside class="sidebar">
+      <nav class="sidebar-nav">
+        <li><a href="index.html">🏠 Home</a></li>
+        <li><a href="explore.html" class="active">🔍 Explore</a></li>
+        <li><a href="messages.html">💬 Messages</a></li>
+        <li><a href="bookmarks.html">🔖 Bookmarks</a></li>
+      </nav>
+    </aside>
+
+    <main class="feed">
+      <div class="feed-header">
+        <h2>Explore</h2>
+      </div>
+      <div style="padding: 3rem; text-align: center;">
+        <h3>Discover New Trends & Users</h3>
+        <p style="color: var(--text-secondary); margin-top: 1rem;">Explore the latest posts and users in SocialHub</p>
+        <div id="explore-container" style="margin-top: 2rem;">
+          <div class="spinner"></div>
+        </div>
+      </div>
+    </main>
+
+    <aside class="right-sidebar">
+      <div class="card">
+        <h3>Popular Topics</h3>
+        <div class="trends-item">
+          <div class="trend-label">Trending Worldwide</div>
+          <div class="trend-title">#WebDevelopment</div>
+          <div class="trend-count">1.2M posts</div>
+        </div>
+        <div class="trends-item">
+          <div class="trend-label">Technology · Trending</div>
+          <div class="trend-title">JavaScript</div>
+          <div class="trend-count">892K posts</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <script src="js/database.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/auth.js"></script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      Auth.requireLogin();
+      const posts = await SocialAPI.getPosts();
+      const container = document.getElementById('explore-container');
+      
+      container.innerHTML = posts.map(post => {
+        const user = getDatabase().users.find(u => u.id === post.userId);
+        return `
+          <div class="post" onclick="window.location.href='post.html?id=${post.id}'">
+            <div class="post-header">
+              <div class="post-user">
+                <img src="${user.avatar}" class="post-avatar" alt="${user.name}">
+                <div>
+                  <a href="profile.html?user=${user.id}" class="post-user-name">${user.name}</a>
+                  <span class="post-user-handle">@${user.username}</span>
+                </div>
+              </div>
+            </div>
+            <div class="post-content">${Utils.escapeHtml(post.content)}</div>
+            ${post.image ? `<img src="${post.image}" class="post-image">` : ''}
+          </div>
+        `;
+      }).join('');
+    });
+  </script>
+</body>
+</html>

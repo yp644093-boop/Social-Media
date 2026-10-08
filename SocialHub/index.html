@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Home - SocialHub</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- Navigation Bar -->
+  <nav class="navbar">
+    <div class="navbar-container">
+      <a href="index.html" class="logo">🌐 SocialHub</a>
+      
+      <div class="nav-center">
+        <input type="text" class="search-box" id="search-input" placeholder="Search users...">
+      </div>
+
+      <div class="nav-right">
+        <button class="nav-icon" title="Home">🏠</button>
+        <button class="nav-icon" title="Notifications">🔔</button>
+        <button class="nav-icon" title="Messages">💬</button>
+        <button class="nav-icon" onclick="Utils.toggleDarkMode()" title="Dark Mode">🌙</button>
+        
+        <div id="auth-div" style="display: flex; gap: 0.5rem;">
+          <a href="login.html" class="btn btn-secondary">Login</a>
+          <a href="register.html" class="btn btn-primary">Sign Up</a>
+        </div>
+
+        <div id="user-div" style="display: none; align-items: center; gap: 1rem;">
+          <img id="user-avatar-nav" class="user-avatar-nav" alt="User">
+          <span style="color: var(--text); font-weight: 600;"><span id="user-name-display">User</span></span>
+          <button class="nav-icon" onclick="Auth.logout()" title="Logout">🚪</button>
+        </div>
+
+        <button class="menu-toggle" onclick="document.querySelector('.sidebar').classList.toggle('active')">☰</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Container -->
+  <div class="main-container">
+    <!-- Left Sidebar -->
+    <aside class="sidebar">
+      <nav class="sidebar-nav">
+        <li><a href="index.html" class="active">🏠 Home</a></li>
+        <li><a href="explore.html">🔍 Explore</a></li>
+        <li><a href="messages.html">💬 Messages</a></li>
+        <li><a href="bookmarks.html">🔖 Bookmarks</a></li>
+        <li><a href="#" onclick="goToProfile()">👤 Profile</a></li>
+      </nav>
+    </aside>
+
+    <!-- Feed -->
+    <main class="feed">
+      <div class="feed-header">
+        <h2>Home</h2>
+      </div>
+
+      <!-- Post Composer -->
+      <div class="post-composer" id="composer-section" style="display: none;">
+        <img id="composer-avatar" class="composer-avatar" alt="Your avatar">
+        <div class="composer-form">
+          <textarea class="composer-textarea" id="post-textarea" placeholder="What's happening?!"></textarea>
+          <div class="composer-actions">
+            <div class="composer-icons">
+              <button type="button" title="Add image">📷</button>
+              <button type="button" title="Add emoji">😊</button>
+              <button type="button" title="Add poll">📊</button>
+            </div>
+            <button class="btn btn-primary" onclick="createPost()">Post</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Posts Feed -->
+      <div id="posts-container">
+        <div class="spinner"></div>
+      </div>
+    </main>
+
+    <!-- Right Sidebar -->
+    <aside class="right-sidebar">
+      <!-- Trends Card -->
+      <div class="card">
+        <h3>Trending Hashtags</h3>
+        <div id="trends-container">
+          <div class="spinner"></div>
+        </div>
+      </div>
+
+      <!-- Who to Follow Card -->
+      <div class="card">
+        <h3>Who to follow</h3>
+        <div id="suggestions-container">
+          <div class="spinner"></div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Modals -->
+  <div id="post-detail-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Post Details</h2>
+        <button class="modal-close" onclick="Utils.closeModal('post-detail-modal')">✕</button>
+      </div>
+      <div id="post-detail-content"></div>
+    </div>
+  </div>
+
+  <script src="js/database.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/auth.js"></script>
+
+  <script>
+    // Initialize page
+    document.addEventListener('DOMContentLoaded', async () => {
+      Auth.requireLogin();
+      const user = Auth.getCurrentUser();
+      
+      if (user) {
+        document.getElementById('composer-section').style.display = 'block';
+        document.getElementById('composer-avatar').src = user.avatar;
+        await loadPosts();
+        await loadSuggestions();
+        await loadTrending();
+      }
+    });
+
+    // Load posts
+    async function loadPosts() {
+      const container = document.getElementById('posts-container');
+      container.innerHTML = '<div class="spinner"></div>';
+      
+      try {
+        const posts = await SocialAPI.getPosts();
+        if (posts.length === 0) {
+          container.innerHTML = '<p class="text-center text-muted" style="padding: 2rem;">No posts yet. Follow some users to get started!</p>';
+          return;
+        }
+
+        const currentUser = Auth.getCurrentUser();
+        container.innerHTML = posts.map(post => renderPost(post, currentUser)).join('');
+        attachPostListeners();
+      } catch (error) {
+        container.innerHTML = '<p class="text-center text-muted" style="padding: 2rem;">Error loading posts</p>';
+      }
+    }
+
+    // Render post with hashtags
+    function renderPost(post, currentUser) {
+      const user = getDatabase().users.find(u => u.id === post.userId);
+      const comments = getDatabase().comments.filter(c => c.postId === post.id);
+      
+      // Create clickable hashtags
+      let contentWithHashtags = Utils.escapeHtml(post.content);
+      if (post.hashtags && post.hashtags.length > 0) {
+        post.hashtags.forEach(tag => {
+          const hashtagRegex = new RegExp(`#${tag}\\b`, 'gi');
+          contentWithHashtags = contentWithHashtags.replace(hashtagRegex, `<a href="hashtag.html?tag=${tag}" class="hashtag">#${tag}</a>`);
+        });
+      }
+      
+      return `
+        <div class="post" data-post-id="${post.id}">
+          <div class="post-header">
+            <div class="post-user">
+              <img src="${user.avatar}" class="post-avatar" alt="${user.name}">
+              <div class="post-user-info">
+                <a href="profile.html?user=${user.id}" class="post-user-name">${user.name}</a>
+                <span class="post-user-handle">@${user.username}</span>
+              </div>
+            </div>
+            <div style="color: var(--text-secondary); font-size: 0.9rem;">${Utils.formatTime(post.timestamp)}${post.isEdited ? ' (edited)' : ''}</div>
+          </div>
+
+          <div class="post-content">${contentWithHashtags}</div>
+          
+          ${post.image ? `<img src="${post.image}" class="post-image" alt="Post image">` : ''}
+
+          <div class="post-stats">
+            <div class="post-stat"><span>${Utils.formatCount(post.comments)}</span> Comments</div>
+            <div class="post-stat"><span>${Utils.formatCount(post.likes)}</span> Likes</div>
+            <div class="post-stat"><span>${Utils.formatCount(post.shares)}</span> Shares</div>
+          </div>
+
+          <div class="post-actions">
+            <button class="post-action" onclick="replyPost(${post.id})">💬 Reply</button>
+            <button class="post-action" onclick="likePost(${post.id})">❤️ Like</button>
+            <button class="post-action" onclick="sharePost(${post.id})">🔄 Share</button>
+          </div>
+        </div>
+      `;
+    }
+
+    // Create post
+    async function createPost() {
+      const content = document.getElementById('post-textarea').value;
+      if (!content.trim()) {
+        Utils.showNotification('Please write something', 'warning');
+        return;
+      }
+
+      const user = Auth.getCurrentUser();
+      try {
+        await SocialAPI.createPost(user.id, content);
+        document.getElementById('post-textarea').value = '';
+        Utils.showNotification('Post created successfully!', 'success');
+        await loadPosts();
+      } catch (error) {
+        Utils.showNotification(error.message, 'error');
+      }
+    }
+
+    // Like post
+    async function likePost(postId) {
+      const user = Auth.getCurrentUser();
+      const db = getDatabase();
+      const post = db.posts.find(p => p.id === postId);
+      const isLiked = db.postLikes[postId] && db.postLikes[postId].includes(user.id);
+
+      try {
+        if (isLiked) {
+          await SocialAPI.unlikePost(postId, user.id);
+        } else {
+          await SocialAPI.likePost(postId, user.id);
+        }
+        await loadPosts();
+      } catch (error) {
+        Utils.showNotification(error.message, 'error');
+      }
+    }
+
+    // Reply to post
+    function replyPost(postId) {
+      Utils.showNotification('Reply feature coming soon!', 'info');
+    }
+
+    // Share post
+    function sharePost(postId) {
+      Utils.showNotification('Shared! 🎉', 'success');
+    }
+
+    // Load suggestions
+    async function loadSuggestions() {
+      const container = document.getElementById('suggestions-container');
+      const currentUser = Auth.getCurrentUser();
+      
+      try {
+        const users = await SocialAPI.getAllUsers();
+        const suggestions = users.filter(u => u.id !== currentUser.id).slice(0, 3);
+
+        container.innerHTML = suggestions.map(user => `
+          <div class="people-item">
+            <img src="${user.avatar}" class="people-avatar" alt="${user.name}">
+            <div class="people-info">
+              <a href="profile.html?user=${user.id}" class="people-name">${user.name}</a>
+              <div class="people-handle">@${user.username}</div>
+            </div>
+            <button class="btn btn-primary people-action" onclick="followUser(${user.id})">Follow</button>
+          </div>
+        `).join('');
+      } catch (error) {
+        container.innerHTML = '<p class="text-center text-muted">Error loading suggestions</p>';
+      }
+    }
+
+    // Load trending hashtags
+    async function loadTrending() {
+      const container = document.getElementById('trends-container');
+      try {
+        const trending = await SocialAPI.getTrendingHashtags(8);
+        if (trending.length === 0) {
+          container.innerHTML = '<p class="text-center text-muted">No trending hashtags yet</p>';
+          return;
+        }
+
+        container.innerHTML = trending.map((trend, index) => `
+          <div class="trends-item" onclick="window.location.href='hashtag.html?tag=${trend.tag}'">
+            <div class="trend-label">${trend.trend === 'up' ? '📈' : trend.trend === 'down' ? '📉' : '→'} Trending ${index + 1}</div>
+            <div class="trend-title">#${trend.tag}</div>
+            <div class="trend-count">${Utils.formatCount(trend.posts)} posts</div>
+          </div>
+        `).join('');
+      } catch (error) {
+        container.innerHTML = '<p class="text-center text-muted">Error loading trends</p>';
+      }
+    }
+
+    // Follow user
+    async function followUser(userId) {
+      const user = Auth.getCurrentUser();
+      try {
+        await SocialAPI.followUser(user.id, userId);
+        Utils.showNotification('User followed!', 'success');
+        await loadSuggestions();
+      } catch (error) {
+        Utils.showNotification(error.message, 'error');
+      }
+    }
+
+    // Go to profile
+    function goToProfile() {
+      const user = Auth.getCurrentUser();
+      window.location.href = `profile.html?user=${user.id}`;
+    }
+
+    // Attach post listeners
+    function attachPostListeners() {
+      document.querySelectorAll('.post').forEach(post => {
+        post.addEventListener('click', function(e) {
+          if (!e.target.closest('.post-action') && !e.target.closest('a')) {
+            const postId = this.dataset.postId;
+            window.location.href = `post.html?id=${postId}`;
+          }
+        });
+      });
+    }
+
+    // Search users
+    const searchInput = document.getElementById('search-input');
+    const debouncedSearch = Utils.debounce(async (query) => {
+      if (query.length < 2) return;
+      const users = await SocialAPI.searchUsers(query);
+      // Show search results (can be enhanced with dropdown)
+    }, 300);
+
+    searchInput.addEventListener('input', (e) => {
+      debouncedSearch(e.target.value);
+    });
+  </script>
+</body>
+</html>
